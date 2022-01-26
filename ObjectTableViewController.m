@@ -22,23 +22,65 @@
 @implementation ObjectTableViewController
 
 + (NSString *)viewerName {
-    return NSLocalizedString(@"Object Viewer", @"");
+    return NSLocalizedString(@"Object Viewer", @"ObjectTableViewController");
+}
+
++ (id)objectWithContentsOfPath:(NSString *)path {
+    NSError *readError = nil;
+    NSData *data = [NSData dataWithContentsOfFile:path options:kNilOptions error:&readError];
+    if (!data) return nil;
+    id object = nil;
+    object = [NSPropertyListSerialization propertyListWithData:data options:kNilOptions format:nil error:&readError];
+    if (object) return object;
+    object = [NSJSONSerialization JSONObjectWithData:data options:kNilOptions error:&readError];
+    if (object) return object;
+    return nil;
+}
+
+- (instancetype)initWithPath:(NSString *)path {
+    if (self = [super init]) {
+        _indentationWidth = 14.0;
+        _entryPath = path;
+        [self setupWithPath];
+    }
+    return self;
 }
 
 - (instancetype)initWithObject:(id)object {
     if (self = [super init]) {
         _indentationWidth = 14.0;
         _object = object;
-        _rootNode = [[ObjectNode alloc] initWithPropertyList:object];
-        [_rootNode _sortUsingDescriptors:@[
-             [NSSortDescriptor sortDescriptorWithKey:@"key" ascending:YES],
-        ]];
+        [self setupWithObject];
     }
     return self;
 }
 
+- (void)setupWithPath {
+    _object = [ObjectTableViewController objectWithContentsOfPath:_entryPath];
+    [self setupWithObject];
+}
+
+- (void)setupWithObject {
+    _rootNode = [[ObjectNode alloc] initWithPropertyList:_object];
+    [_rootNode _sortUsingDescriptors:@[
+         [NSSortDescriptor sortDescriptorWithKey:@"key" ascending:YES],
+    ]];
+    if (self.initialRootExpanded) {
+        [_rootNode setExpanded:YES recursively:NO];
+    }
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
+
+    if (self.title.length == 0) {
+        if (self.entryPath) {
+            NSString *entryName = [self.entryPath lastPathComponent];
+            self.title = entryName;
+        } else {
+            self.title = [[self class] viewerName];
+        }
+    }
 
     self.view.backgroundColor = [UIColor systemBackgroundColor];
 
@@ -50,16 +92,49 @@
         searchController;
     });
 
+    if (self.pullToReload && self.entryPath) {
+        self.refreshControl = ({
+            UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
+            [refreshControl addTarget:self action:@selector(reloadDataFromEntry:) forControlEvents:UIControlEventValueChanged];
+            refreshControl;
+        });
+    }
+
     if (self.allowSearch) {
         self.navigationItem.hidesSearchBarWhenScrolling = YES;
         self.navigationItem.searchController = self.searchController;
     }
 
+    UINavigationBarAppearance *newNavBarAppearance = [[UINavigationBarAppearance alloc] init];
+    [newNavBarAppearance configureWithOpaqueBackground];
+    [self.navigationController.navigationBar setScrollEdgeAppearance:newNavBarAppearance];
+    if (@available(iOS 15.0, *)) {
+        [self.navigationController.navigationBar setCompactScrollEdgeAppearance:newNavBarAppearance];
+    }
+
     [self.tableView registerClass:[ObjectCell class] forCellReuseIdentifier:@"ObjectCell"];
+
+    if (self.initialRootExpanded) {
+        [self.rootNode setExpanded:YES recursively:NO];
+    }
+}
+
+- (void)reloadDataFromEntry:(UIRefreshControl *)sender {
+    if (self.searchController.isActive) {
+        return;
+    }
+    [self loadDataFromEntry];
+    if ([sender isRefreshing]) {
+        [sender endRefreshing];
+    }
+}
+
+- (void)loadDataFromEntry {
+    [self setupWithPath];
+    [self.tableView reloadData];
 }
 
 #pragma mark - Table view data source
-
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 1;
@@ -87,34 +162,34 @@
             NSString *strValue = [NSString stringWithFormat:@"%@", [ObjectNode stringValueOfNode:cellNode]];
             if (cellNode != rootNode && !cellNode.isNodeOfArray) {
                 NSString *strKey = [NSString stringWithFormat:@"%@", [ObjectNode stringKeyOfNode:cellNode]];
-                [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Key", @"") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+                [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Key", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                             [[UIPasteboard generalPasteboard] setString:strKey];
                                         }]];
             }
-            [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Value", @"") image:[UIImage systemImageNamed:@"doc.on.doc.fill"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+            [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Value", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"doc.on.doc.fill"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                         [[UIPasteboard generalPasteboard] setString:strValue];
                                     }]];
         } else {
             if (cellNode != rootNode) {
                 NSString *strKey = [NSString stringWithFormat:@"%@", [ObjectNode stringKeyOfNode:cellNode]];
-                [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Key", @"") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+                [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Copy Key", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                             [[UIPasteboard generalPasteboard] setString:strKey];
                                         }]];
             }
             if (!self.searchController.isActive) {
                 if (cellNode.isExpanded) {
-                    [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Collapse Recursively", @"") image:[UIImage systemImageNamed:@"arrow.down.right.and.arrow.up.left"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+                    [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Collapse Recursively", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"arrow.down.right.and.arrow.up.left"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                                 [self tableView:tableView triggerNodeAtIndexPath:indexPath recursively:YES];
                                             }]];
                 } else {
-                    [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Expand Recursively", @"") image:[UIImage systemImageNamed:@"arrow.up.left.and.arrow.down.right"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+                    [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Expand Recursively", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"arrow.up.left.and.arrow.down.right"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                                 [self tableView:tableView triggerNodeAtIndexPath:indexPath recursively:YES];
                                             }]];
                 }
             }
         }
         if (self.searchController.isActive) {
-            [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Focus", @"") image:[UIImage systemImageNamed:@"scope"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
+            [cellActions addObject:[UIAction actionWithTitle:NSLocalizedString(@"Focus", @"ObjectTableViewController") image:[UIImage systemImageNamed:@"scope"] identifier:nil handler:^(__kindof UIAction *_Nonnull action) {
                                         ObjectNode *targetNode = [self.rootNode descendantNodeForVisibleKey:cellNode.visibleKey];
                                         if (targetNode) {
                                             [self.rootNode expandToDescendantNode:targetNode];
@@ -131,7 +206,7 @@
                                     }]];
         }
         return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *_Nullable (NSArray<UIMenuElement *> *_Nonnull suggestedActions) {
-                    UIMenu *menu = [UIMenu menuWithTitle:(self.showTypeHint ? [NSString stringWithFormat:NSLocalizedString(@"<%@: %p>", @""), NSStringFromClass([cellNode.propertyList class]), cellNode.propertyList] : @"") children:cellActions];
+                    UIMenu *menu = [UIMenu menuWithTitle:(self.showTypeHint ? [NSString stringWithFormat:NSLocalizedString(@"<%@: %p>", @"ObjectTableViewController"), NSStringFromClass([cellNode.propertyList class]), cellNode.propertyList] : @"") children:cellActions];
                     return menu;
                 }];
     }
@@ -183,16 +258,82 @@
     [self tableView:tableView triggerNodeAtIndexPath:indexPath recursively:NO];
 }
 
+- (UIColor *)cachedCellBackgroundColorForIndentationLevel:(NSInteger)level referenceColor:(UIColor *)refColor {
+    static NSMutableDictionary <NSNumber *, UIColor *> *cachedColors = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cachedColors = [[NSMutableDictionary alloc] init];
+    });
+
+    NSNumber *cachedKey = @(level);
+    if (cachedColors[cachedKey]) {
+        return cachedColors[cachedKey];
+    }
+
+    CGFloat brightnessDelta = level * 0.025;
+    CGFloat lightHue, lightSaturation, lightBrightness, lightAlpha;
+    CGFloat darkHue, darkSaturation, darkBrightness, darkAlpha;
+
+    UIColor *resolvedLight = [refColor resolvedColorWithTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight]];
+    UIColor *updatedLight = nil;
+    {
+        BOOL converted = [resolvedLight getHue:&lightHue saturation:&lightSaturation brightness:&lightBrightness alpha:&lightAlpha];
+        if (converted) {
+            lightBrightness -= brightnessDelta;
+            updatedLight = [UIColor colorWithHue:lightHue saturation:lightSaturation brightness:lightBrightness alpha:lightAlpha];
+        }
+    }
+
+    UIColor *resolvedDark = [refColor resolvedColorWithTraitCollection:[UITraitCollection traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleDark]];
+    UIColor *updatedDark = nil;
+    {
+        BOOL converted = [resolvedDark getHue:&darkHue saturation:&darkSaturation brightness:&darkBrightness alpha:&darkAlpha];
+        if (converted) {
+            darkBrightness += brightnessDelta;
+            updatedDark = [UIColor colorWithHue:darkHue saturation:darkSaturation brightness:darkBrightness alpha:darkAlpha];
+        }
+    }
+
+    if (!updatedDark || !updatedLight) {
+        return nil;
+    }
+
+    UIColor *color = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
+        if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+            return updatedDark;
+        } else {
+            return updatedLight;
+        }
+    }];
+
+    cachedColors[cachedKey] = color;
+    return color;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     ObjectCell *cell = (ObjectCell *)[tableView dequeueReusableCellWithIdentifier:@"ObjectCell" forIndexPath:indexPath];
     cell.indentationWidth = self.indentationWidth;
+
     ObjectNode *rootNode = self.searchController.isActive ? self.rootNodeForSearch : self.rootNode;
     ObjectNode *cellNode = [rootNode descendantNodeAtIndex:indexPath.row];
+
+    if (self.coloredIndentation) {
+        UIColor *bgColor = [self cachedCellBackgroundColorForIndentationLevel:cellNode.levelOfDescendants referenceColor:tableView.backgroundColor];
+        if (bgColor) {
+            if (@available(iOS 14.0, *)) {
+                UIBackgroundConfiguration *bgConf = [UIBackgroundConfiguration listPlainCellConfiguration];
+                [bgConf setBackgroundColor:bgColor];
+                [cell setBackgroundConfiguration:bgConf];
+            } else {
+                [cell setBackgroundColor:bgColor];
+            }
+        }
+    }
 
     NSString *cellKey;
     BOOL isRootNode;
     if (cellNode == rootNode) {
-        cellKey = NSLocalizedString(@"Root", @"");
+        cellKey = NSLocalizedString(@"Root", @"ObjectTableViewController");
         isRootNode = YES;
     } else {
         cellKey = [ObjectNode stringKeyOfNode:cellNode];
@@ -219,7 +360,16 @@
             NSString *searchContent = self.searchController.searchBar.text;
             NSRange searchRange = [strKey rangeOfString:searchContent options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch range:NSMakeRange(0, strKey.length)];
             if (searchRange.location != NSNotFound) {
-                [attrKey addAttributes:@{ NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0] } range:searchRange];
+                [attrKey addAttributes:@{
+                     NSForegroundColorAttributeName: [UIColor colorWithDynamicProvider:^UIColor *_Nonnull (UITraitCollection *_Nonnull traitCollection) {
+                                                          if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+                                                              return [UIColor systemBackgroundColor];
+                                                          } else {
+                                                              return [UIColor labelColor];
+                                                          }
+                                                      }],
+                     NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0],
+                 } range:searchRange];
             }
         }
         [cell.textLabel setAttributedText:attrKey];
@@ -243,7 +393,16 @@
             NSString *searchContent = self.searchController.searchBar.text;
             NSRange searchRange = [strVal rangeOfString:searchContent options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch range:NSMakeRange(0, strVal.length)];
             if (searchRange.location != NSNotFound) {
-                [attrValue addAttributes:@{ NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0] } range:searchRange];
+                [attrValue addAttributes:@{
+                     NSForegroundColorAttributeName: [UIColor colorWithDynamicProvider:^UIColor *_Nonnull (UITraitCollection *_Nonnull traitCollection) {
+                                                          if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+                                                              return [UIColor systemBackgroundColor];
+                                                          } else {
+                                                              return [UIColor labelColor];
+                                                          }
+                                                      }],
+                     NSBackgroundColorAttributeName: [UIColor colorWithRed:253.0/255.0 green:247.0/255.0 blue:148.0/255.0 alpha:1.0],
+                 } range:searchRange];
             }
         }
         [cell.detailTextLabel setAttributedText:attrValue];
@@ -277,7 +436,7 @@
 
 - (void)dealloc {
 #if DEBUG
-    NSLog(@"-[%@ dealloc]", [self class]);
+    NSLog(@"- [%@ dealloc]", [self class]);
 #endif
 }
 

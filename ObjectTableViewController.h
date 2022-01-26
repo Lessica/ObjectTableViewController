@@ -12,13 +12,19 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ObjectTableViewController : UITableViewController
 
+- (instancetype)initWithPath:(NSString *)path;
+@property (nonatomic, copy, readonly) NSString *entryPath;
+
 - (instancetype)initWithObject:(id)object;
 @property (nonatomic, strong, readonly) id object;
 
 @property (nonatomic, assign) CGFloat indentationWidth;
+@property (nonatomic, assign) BOOL initialRootExpanded;
+@property (nonatomic, assign) BOOL pullToReload;
 @property (nonatomic, assign) BOOL pressToCopy;
 @property (nonatomic, assign) BOOL showTypeHint;
 @property (nonatomic, assign) BOOL allowSearch;
+@property (nonatomic, assign) BOOL coloredIndentation;
 
 @end
 
